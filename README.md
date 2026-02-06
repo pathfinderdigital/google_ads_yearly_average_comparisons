@@ -1,4 +1,4 @@
-# Google Ads Performance Benchmarking (Platform-Only)
+# Google Ads Performance Benchmarking
 
 This BigQuery script generates a comparative analysis table that evaluates current year Google Ads performance against historical averages for the same calendar day (Month/Day).
 
