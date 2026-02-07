@@ -1,75 +1,54 @@
 # Google Ads Performance Benchmarking
 
-This BigQuery script generates a comparative analysis table that evaluates current year Google Ads performance against historical averages for the same calendar day (Month/Day).
-
 ## Overview
 
-* **Target Table:** `upland-farm.summary_tables.gads_cpa_vs_hist_avg`
+This BigQuery SQL script processes raw Google Ads account data to create a comparative performance baseline for every calendar day. It transforms historical campaign statistics into a structured summary table that answers the critical question: "How does today's performance compare to every other time we've seen this specific date in the past?"
 
-* **Source Data:** `upland-farm.google_ads_data_transfer.p_ads_AccountBasicStats_9578934950`
+## Key Features
 
-* **Primary Goal:** To provide context for daily performance by answering: *"How does today's performance compare to every other time we've seen this specific date in the past?"*
+* Seasonal Baselines: Automatically groups historical data by Month and Day (ignoring the year) to create a "seasonal baseline" for every day of the calendar year.
+* Multi-Metric Benchmarking: Calculates a comprehensive suite of statistics including Average, Minimum, and Maximum values for CPA, ROAS, Revenue, and Cost.
+* Historical Performance Ranking: Utilizes window functions to rank the current year's performance against all historical data points for that same calendar date.
+* Dynamic Date Context: Automatically identifies the current year and date boundaries, ensuring the comparisons remain relevant as time progresses without manual intervention.
+* Performance Optimized: * Uses SAFE_DIVIDE to prevent errors on days where conversions or costs are zero.
 
-## Script Logic & Workflow
+** Aggregates raw data into a daily_stats CTE to ensure cleaner joins and reduced processing overhead.
+** Employs a CROSS JOIN for dynamic parameter injection, avoiding hard-coded date strings.
 
-The script executes in five distinct phases:
+## How to Customize
 
-1. **Dynamic Parameters (`params`):** Automatically identifies the current year and date boundaries to ensure the script remains dynamic as time progresses.
+To deploy this in a new Google Cloud project, update the following two areas marked in the code:
 
-2. **Raw Data Extraction (`daily_stats`):**
+### Destination Table:
+Update `upland-farm.summary_tables.gads_cpa_vs_hist_avg` to your specific ProjectID.Dataset.TableName.
 
-   * Aggregates metrics from the Google Ads Data Transfer service.
+### Source Data:
+Update `upland-farm.google_ads_data_transfer.p_ads_AccountBasicStats_9578934950` to point to your raw Google Ads Data Transfer service table.
 
-   * Converts `metrics_cost_micros` to standard currency values (dividing by $1,000,000$).
+## Output Schema
 
-   * Extracts Year, Month, and Day for granular joining.
+The resulting table provides the following columns:
 
-3. **Historical Benchmarking (`benchmarks`):**
+* date: The specific date within the current year being analyzed.
+* current_...: The actual performance recorded for that date (CPA, ROAS, Revenue, Cost).
+* ..._avg: The historical mean for that specific Month/Day across all years.
+* ..._min / ..._max: The all-time "floor" and "ceiling" for that specific Month/Day.
+* ..._rank: A numerical rank showing where the current day stands in historical context.
 
-   * Groups data by **Month** and **Day** (ignoring the year).
+## Data Quality: Performance Ranking Logic
 
-   * Calculates **Average**, **Minimum**, and **Maximum** for CPA, ROAS, Revenue, and Cost.
+To provide context for daily performance, the script evaluates where the current year sits relative to history. This allows marketers to identify if a "high" CPA is actually a historical improvement or a genuine outlier.
 
-   * This creates a "seasonal baseline" for every day of the calendar year.
+## The Methodology
 
-4. **Ranking Pool (`ranking_pool`):**
+The script applies a specific ranking priority to each metric using window functions. Instead of a "one-size-fits-all" sort, it prioritizes based on marketing goals:
 
-   * Calculates the performance rank for every day in history relative to its specific calendar date.
+* Efficiency (CPA): Uses ASC ranking. Because a lower cost per acquisition is better, Rank 1 represents the lowest (best) historical CPA for that date.
+* Returns (ROAS & Revenue): Uses DESC ranking. Higher values are prioritized, meaning Rank 1 represents the highest historical performance.
+* Investment (Cost): Uses DESC ranking to identify days of peak investment relative to historical spending patterns.
 
-   * **CPA Rank:** Ascending (Lower cost per acquisition is better).
+## Why this is necessary
 
-   * **ROAS/Revenue Rank:** Descending (Higher values are better).
-
-5. **Final Comparative Join:**
-
-   * Joins the `ranking_pool` for the **current year** back to the `benchmarks` baseline.
-
-   * Uses a `CROSS JOIN` on parameters to strictly filter for the current year's data.
-
-## Key Metrics Tracked
-
-| **Metric** | **Calculation Logic** | **Ranking Priority** | 
-| :--- | :--- | :--- |
-| **CPA** | `SAFE_DIVIDE(cost, conversions)` | Rank 1 = Lowest CPA | 
-| **ROAS** | `SAFE_DIVIDE(revenue, cost)` | Rank 1 = Highest ROAS | 
-| **Revenue** | `SUM(revenue)` | Rank 1 = Highest Revenue | 
-| **Cost** | `SUM(cost)` | Rank 1 = Highest Spend | 
-
-## 🗄 Output Schema
-
-| **Column** | **Description** | 
-| :--- | :--- |
-| `date` | The specific date within the current year. | 
-| `current_...` | The actual performance recorded for that date. | 
-| `..._avg` | The historical mean for that specific Month/Day. | 
-| `..._min` | The all-time "floor" for that specific Month/Day. | 
-| `..._max` | The all-time "ceiling" for that specific Month/Day. | 
-| `..._rank` | Where the current day stands in historical context. | 
-
-## ⚠️ Implementation Notes
-
-* **Safety First:** The script utilizes `SAFE_DIVIDE` to prevent errors on days where conversions or costs are zero.
-
-* **Micros:** Ensure any updates to the source data maintain the micros format (10^6), or the currency calculations will be off.
-
-* **Cross Join:** The final `CROSS JOIN` is intentionally used to inject dynamic date parameters into the filter without requiring hard-coded strings.
+* Contextual Accuracy: A high CPA on a holiday like Black Friday might be alarming in isolation, but "Rank 1" status indicates it is actually the most efficient Black Friday in the account's history.
+* Seasonality Awareness: Traditional averages (e.g., Last 30 Days) often ignore annual seasonality. This script ensures that a Tuesday in December is only compared to other Tuesdays in December.
+* Dashboard Readiness: By pre-calculating ranks and benchmarks, you can build Looker Studio reports that instantly flag performance anomalies without complex client-side calculations.
