@@ -1,5 +1,3 @@
-# Google Ads Performance Benchmarking
-
 ## Overview
 
 This BigQuery SQL script processes raw Google Ads account data to create a comparative performance baseline for every calendar day. It transforms historical campaign statistics into a structured summary table that answers the critical question: "How does today's performance compare to every other time we've seen this specific date in the past?"
